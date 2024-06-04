@@ -47,10 +47,33 @@ func handleError(err error) {
 		os.Exit(1)
 	}
 }
+func(s *simpleServer) Address string {
+	return s.addr
+}
+func(s *simpleServer) IsAlive bool {
+	return true
+}
 
-func (lb *LoadBalancer) getNextAvailableServer(Server) {}
+func(s *simpleServer) Serve(rw http.ResponseWriter, rq *http.Request) {
+	s.proxy.ServeHTTP(rw, r)
+}
 
-func (lb *LoadBalancer) serveProxy(rw http.ResponseWriter, r *http.Request) {}
+func (lb *LoadBalancer) getNextAvailableServer(Server) {
+	server:=lb.serverList[lb.roundRobinIndex%len(lb.serverList)]
+	for server.IsAlive() {
+		lb.roundRobinIndex++
+		server = lb.serverList[lb.roundRobinIndex%len(lb.serverList)]
+	}
+	lb.roundRobinIndex++
+	return server
+
+}
+
+func (lb *LoadBalancer) serveProxy(rw http.ResponseWriter, req *http.Request) {
+	targetServer := lb.getNextAvailableServer()
+	fmt.Printf("Redirecting to server : %s\n", targetServer.Address())
+	targetServer.Serve(rw, req)
+}
 
 func main() {
 	serverList := []Server{
