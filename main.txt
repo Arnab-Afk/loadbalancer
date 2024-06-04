@@ -12,7 +12,6 @@ type simpleServer struct {
 	addr  string
 	proxy *httputil.ReverseProxy
 }
-
 type Server interface {
 	Address() string
 	IsAlive() bool
@@ -20,12 +19,12 @@ type Server interface {
 }
 
 func newSimpleServer(addr string) *simpleServer {
-	serverURL, err := url.Parse(addr)
+	serverurl, err := url.Parse(addr)
 	handleError(err)
 
 	return &simpleServer{
 		addr:  addr,
-		proxy: httputil.NewSingleHostReverseProxy(serverURL),
+		proxy: httputil.NewSingleHostReverseProxy(serverurl),
 	}
 }
 
@@ -42,62 +41,49 @@ func newLoadBalancer(port string, serverList []Server) *LoadBalancer {
 		serverList:      serverList,
 	}
 }
-
 func handleError(err error) {
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
+		fmt.Printf("error : %v\n", err)
 		os.Exit(1)
 	}
 }
-
 func (s *simpleServer) Address() string {
 	return s.addr
 }
-
 func (s *simpleServer) IsAlive() bool {
-	// Implement a real health check here.
-	resp, err := http.Get(s.addr)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return false
-	}
 	return true
 }
 
 func (s *simpleServer) Serve(rw http.ResponseWriter, req *http.Request) {
-	fmt.Printf("Forwarding request to %s\n", s.addr)
 	s.proxy.ServeHTTP(rw, req)
 }
 
 func (lb *LoadBalancer) getNextAvailableServer() Server {
-	for {
-		server := lb.serverList[lb.roundRobinIndex%len(lb.serverList)]
+	server := lb.serverList[lb.roundRobinIndex%len(lb.serverList)]
+	for !server.IsAlive() {
 		lb.roundRobinIndex++
-		if server.IsAlive() {
-			fmt.Printf("Selected server: %s\n", server.Address())
-			return server
-		}
+		server = lb.serverList[lb.roundRobinIndex%len(lb.serverList)]
 	}
+	lb.roundRobinIndex++
+	return server
 }
 
 func (lb *LoadBalancer) serveProxy(rw http.ResponseWriter, req *http.Request) {
-	fmt.Printf("Received request: %s\n", req.URL.Path)
 	targetServer := lb.getNextAvailableServer()
 	targetServer.Serve(rw, req)
 }
-
 func main() {
 	serverList := []Server{
-		newSimpleServer("https://www.facebook.com/"),
-		newSimpleServer("https://www.bing.com/"),
-		newSimpleServer("https://www.duckduckgo.com/"),
+		newSimpleServer("http://www.facebook.com/"),
+		newSimpleServer("http://www.google.com/"),
+		newSimpleServer("http://www.youtube.com/"),
 	}
 
-	lb := newLoadBalancer("8009", serverList)
+	lb := newLoadBalancer("3000", serverList)
 	handleRedirect := func(rw http.ResponseWriter, req *http.Request) {
 		lb.serveProxy(rw, req)
 	}
 	http.HandleFunc("/", handleRedirect)
 	fmt.Printf("Load Balancer started at :%s\n", lb.port)
-	err := http.ListenAndServe(":"+lb.port, nil)
-	handleError(err)
+	http.ListenAndServe(":"+lb.port, nil)
 }
